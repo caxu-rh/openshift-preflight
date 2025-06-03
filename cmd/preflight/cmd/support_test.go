@@ -53,7 +53,7 @@ var _ = Describe("support command tests", func() {
 			Expect(err).To(HaveOccurred())
 		})
 
-		It("should fail if if the input contains a leading p", func() {
+		It("should fail if the input contains a leading p", func() {
 			err := projectIDValidation(projectIDStartWithP)
 			Expect(err).To(HaveOccurred())
 		})
