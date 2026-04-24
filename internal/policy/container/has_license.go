@@ -55,16 +55,29 @@ func (p *HasLicenseCheck) getDataToValidate(ctx context.Context, mountedPath str
 		return nil, fmt.Errorf("%s is not a directory: %w", licensePath, errLicensesNotADir)
 	}
 
+	// WalkDir does not follow a symlink at the root; if /licenses is a symlink to a directory,
+	// Stat above follows it and IsDir is true, but the walk would otherwise treat the symlink
+	// itself as a non-directory "file". Resolve before walking.
+	walkRoot := fullPath
+	if rp, errSy := filepath.EvalSymlinks(fullPath); errSy == nil && rp != "" {
+		walkRoot = rp
+	}
+
 	var files []fs.DirEntry
-	err = filepath.WalkDir(fullPath, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(walkRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			//coverage:ignore
 			return err
 		}
-		// Only include regular files, not directories
-		if !d.IsDir() {
-			files = append(files, d)
+		if d.IsDir() {
+			return nil
 		}
+		// Follow symlinks: license text may be linked from elsewhere; skip non-regular results.
+		fi, errSt := os.Stat(p)
+		if errSt != nil || !fi.Mode().IsRegular() {
+			return nil
+		}
+		files = append(files, d)
 		return nil
 	})
 	if err != nil {

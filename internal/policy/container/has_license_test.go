@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -115,6 +116,30 @@ var _ = Describe("HasLicense", func() {
 				tmpDir := setupTmpDir()
 				createLicenseDir(tmpDir)
 				createLicenseFile(tmpDir, filepath.Join("a/b/c", validLicense))
+
+				ok, err := hasLicense.Validate(context.TODO(), image.ImageReference{ImageFSPath: tmpDir})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(ok).To(BeTrue())
+			})
+		})
+
+		Context("When /licenses is a symlink to a directory that contains license files", func() {
+			It("Should pass Validate and count each regular file, not the symlink alone", func() {
+				if runtime.GOOS == "windows" {
+					Skip("symlink fixture not portable on Windows")
+				}
+				tmpDir := setupTmpDir()
+				targetDir := filepath.Join(tmpDir, "licenses-target")
+				Expect(os.Mkdir(targetDir, 0o755)).To(Succeed())
+				licenseNames := []string{validLicense, "second-license.txt", "third-license.txt"}
+				for _, name := range licenseNames {
+					Expect(os.WriteFile(filepath.Join(targetDir, name), []byte("This is a license"), 0o644)).To(Succeed())
+				}
+				Expect(os.Symlink(targetDir, filepath.Join(tmpDir, licenses))).To(Succeed())
+
+				entries, err := hasLicense.getDataToValidate(context.TODO(), tmpDir)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(entries).To(HaveLen(len(licenseNames)), "buggy walk counted the /licenses symlink as one file instead of walking the target directory")
 
 				ok, err := hasLicense.Validate(context.TODO(), image.ImageReference{ImageFSPath: tmpDir})
 				Expect(err).ToNot(HaveOccurred())
